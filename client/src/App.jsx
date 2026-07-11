@@ -30,10 +30,28 @@ function App() {
   const [activeTab, setActiveTab] = useState('apikey')
   const [replyTarget, setReplyTarget] = useState(null)
   const [attachedImages, setAttachedImages] = useState([])
+  const [conversations, setConversations] = useState([
+    { id: 'c1', title: '产品主视觉设计方案' },
+    { id: 'c2', title: 'API 接口文档整理' }
+  ])
+  const [currentConversationId, setCurrentConversationId] = useState('c1')
+  const [deleteTarget, setDeleteTarget] = useState(null)
+  
+  // 模型列表：当前为静态数据，后续可通过 useEffect 接入后端 API
+  const [availableModels, setAvailableModels] = useState([
+    { id: 'gpt-4o', name: 'GPT-4o', provider: 'OpenAI' },
+    { id: 'gpt-4o-mini', name: 'GPT-4o mini', provider: 'OpenAI' },
+    { id: 'claude-3.5-sonnet', name: 'Claude 3.5 Sonnet', provider: 'Anthropic' }
+  ])
+  const [selectedModelId, setSelectedModelId] = useState('gpt-4o')
+  const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false)
   
   const messagesEndRef = useRef(null)
   const textareaRef = useRef(null)
   const fileInputRef = useRef(null)
+  const modelDropdownRef = useRef(null)
+
+  const selectedModel = availableModels.find(m => m.id === selectedModelId)
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -42,6 +60,28 @@ function App() {
   useEffect(() => {
     scrollToBottom()
   }, [messages, isGenerating])
+
+  // 点击外部关闭模型下拉菜单
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (modelDropdownRef.current && !modelDropdownRef.current.contains(e.target)) {
+        setIsModelDropdownOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  // TODO: 从后端加载可用模型列表
+  useEffect(() => {
+    // 接入后端时在此调用 /api/models，例如：
+    // fetch('/api/models')
+    //   .then(res => res.json())
+    //   .then(data => {
+    //     setAvailableModels(data.models)
+    //     setSelectedModelId(data.defaultModelId)
+    //   })
+  }, [])
 
   const handleInput = (e) => {
     setUserInput(e.target.value)
@@ -155,6 +195,46 @@ function App() {
     setAttachedImages(prev => prev.filter(img => img.id !== id))
   }
 
+  const handleDeleteConversation = (e, id) => {
+    e.stopPropagation()
+    const conversation = conversations.find(c => c.id === id)
+    if (!conversation) return
+    setDeleteTarget(conversation)
+  }
+
+  const confirmDelete = () => {
+    if (!deleteTarget) return
+    const id = deleteTarget.id
+    const nextConversations = conversations.filter(c => c.id !== id)
+    setConversations(nextConversations)
+
+    if (currentConversationId === id) {
+      if (nextConversations.length > 0) {
+        setCurrentConversationId(nextConversations[0].id)
+      } else {
+        setCurrentConversationId(null)
+        setMessages([])
+      }
+    }
+    setDeleteTarget(null)
+  }
+
+  const handleNewConversation = () => {
+    const newId = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+    const newConversation = { id: newId, title: '新对话' }
+    setConversations(prev => [newConversation, ...prev])
+    setCurrentConversationId(newId)
+    setMessages([])
+  }
+
+  const handleModelChange = (modelId) => {
+    setSelectedModelId(modelId)
+    setIsModelDropdownOpen(false)
+    // TODO: 后端接入时，可在此处调用 API 保存当前对话的模型选择
+  }
+
   return (
     <div className="flex w-full h-dvh font-sans text-text-body bg-bg-primary">
       {/* Sidebar */}
@@ -166,7 +246,7 @@ function App() {
             </div>
             AI 助手
           </div>
-          <button className="flex items-center gap-2 w-full px-3.5 py-2.5 border border-border-hover rounded-lg bg-bg-primary text-text-body text-[13px] cursor-pointer transition-colors hover:bg-bg-hover hover:border-text-muted" onClick={() => setMessages([])}>
+          <button className="flex items-center gap-2 w-full px-3.5 py-2.5 border border-border-hover rounded-lg bg-bg-primary text-text-body text-[13px] cursor-pointer transition-colors hover:bg-bg-hover hover:border-text-muted" onClick={handleNewConversation}>
             <svg className="w-4 h-4 opacity-60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <line x1="12" y1="5" x2="12" y2="19"></line>
               <line x1="5" y1="12" x2="19" y2="12"></line>
@@ -177,18 +257,29 @@ function App() {
 
         <nav className="flex-1 overflow-y-auto px-2.5 py-2">
           <div className="text-[11px] font-medium text-text-muted uppercase tracking-wider px-2.5 pt-3 pb-1.5">今天</div>
-          <div className="group flex items-center gap-2.5 px-3 py-2.5 rounded-lg cursor-pointer text-text-body transition-colors relative hover:bg-bg-hover bg-bg-active">
-            <svg className="opacity-40 shrink-0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-            <span className="flex-1 overflow-hidden whitespace-nowrap text-ellipsis text-[13px]">产品主视觉设计方案</span>
-            <div className="opacity-0 flex gap-0.5 transition-opacity group-hover:opacity-100">
-              <button className="w-6 h-6 border-none bg-transparent text-text-muted cursor-pointer rounded-sm flex items-center justify-center hover:bg-bg-active hover:text-text-body" title="重命名">···</button>
-              <button className="w-6 h-6 border-none bg-transparent text-text-muted cursor-pointer rounded-sm flex items-center justify-center hover:bg-bg-active hover:text-text-body" title="删除">&times;</button>
+          {conversations.map((conversation) => (
+            <div
+              key={conversation.id}
+              className={`group flex items-center gap-2.5 px-3 py-2.5 rounded-lg cursor-pointer text-text-body transition-colors relative ${conversation.id === currentConversationId ? 'bg-bg-active' : 'hover:bg-bg-hover'}`}
+              onClick={() => setCurrentConversationId(conversation.id)}
+            >
+              <svg className="opacity-40 shrink-0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+              <span className="flex-1 overflow-hidden whitespace-nowrap text-ellipsis text-[13px]">{conversation.title}</span>
+              <div className="opacity-0 flex gap-0.5 transition-opacity group-hover:opacity-100">
+                <button className="w-6 h-6 border-none bg-transparent text-text-muted cursor-pointer rounded-sm flex items-center justify-center hover:bg-bg-active hover:text-text-body" title="重命名">···</button>
+                <button
+                  className="w-6 h-6 border-none bg-transparent text-text-muted cursor-pointer rounded-sm flex items-center justify-center hover:bg-bg-active hover:text-text-body"
+                  title="删除"
+                  onClick={(e) => handleDeleteConversation(e, conversation.id)}
+                >
+                  &times;
+                </button>
+              </div>
             </div>
-          </div>
-          <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg cursor-pointer text-text-body transition-colors relative hover:bg-bg-hover">
-            <svg className="opacity-40 shrink-0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-            <span className="flex-1 overflow-hidden whitespace-nowrap text-ellipsis text-[13px]">API 接口文档整理</span>
-          </div>
+          ))}
+          {conversations.length === 0 && (
+            <div className="px-3 py-2.5 text-[13px] text-text-muted text-center">暂无历史对话</div>
+          )}
         </nav>
 
         <div className="p-3 border-t border-border-default shrink-0 flex items-center justify-between gap-1">
@@ -205,11 +296,39 @@ function App() {
       {/* Main Chat Area */}
       <main className="flex-1 flex flex-col min-w-0 bg-bg-primary">
         <header className="px-6 py-3 border-b border-bg-hover flex items-center justify-between shrink-0">
-          <span className="text-[16px] font-semibold text-text-primary">产品主视觉设计方案</span>
-          <div className="flex items-center gap-1.5 px-3 py-1.5 border border-border-default rounded-3xl bg-bg-sidebar text-[12px] text-text-secondary cursor-pointer transition-colors hover:border-border-hover">
-            <span className="w-1.5 h-1.5 bg-accent rounded-full"></span>
-            GPT-4o
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          <span className="text-[16px] font-semibold text-text-primary">
+            {conversations.find(c => c.id === currentConversationId)?.title ?? '新对话'}
+          </span>
+          <div className="relative" ref={modelDropdownRef}>
+            <button
+              className="flex items-center gap-1.5 px-3 py-1.5 border border-border-default rounded-3xl bg-bg-sidebar text-[12px] text-text-secondary cursor-pointer transition-colors hover:border-border-hover"
+              onClick={() => setIsModelDropdownOpen(prev => !prev)}
+              aria-haspopup="listbox"
+              aria-expanded={isModelDropdownOpen}
+            >
+              <span className="w-1.5 h-1.5 bg-accent rounded-full"></span>
+              {selectedModel?.name ?? '选择模型'}
+              <svg className={`transition-transform ${isModelDropdownOpen ? 'rotate-180' : ''}`} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </button>
+            {isModelDropdownOpen && (
+              <div className="absolute top-full right-0 mt-1.5 w-56 bg-bg-primary border border-border-default rounded-xl shadow-xl py-1 z-50 animate-in" role="listbox">
+                {availableModels.map((model) => (
+                  <button
+                    key={model.id}
+                    className={`w-full flex items-center gap-2 px-3 py-2 text-left text-[13px] transition-colors ${selectedModelId === model.id ? 'text-text-primary bg-bg-active' : 'text-text-body hover:bg-bg-hover'}`}
+                    onClick={() => handleModelChange(model.id)}
+                    role="option"
+                    aria-selected={selectedModelId === model.id}
+                  >
+                    <span className={`w-1.5 h-1.5 rounded-full ${selectedModelId === model.id ? 'bg-accent' : 'bg-text-muted'}`}></span>
+                    <span className="flex-1">{model.name}</span>
+                    {selectedModelId === model.id && (
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4d7cfe" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </header>
 
@@ -414,6 +533,29 @@ function App() {
             <div className="flex justify-end gap-2 px-6 py-4 border-t border-bg-hover">
               <button className="px-4.5 py-2 border border-border-hover rounded-lg bg-bg-primary text-text-body text-[13px] cursor-pointer transition-colors hover:bg-bg-sidebar" onClick={() => setIsSettingsOpen(false)}>取消</button>
               <button className="px-4.5 py-2 border-none rounded-lg bg-accent text-white text-[13px] font-medium cursor-pointer transition-colors hover:bg-accent-hover" onClick={() => setIsSettingsOpen(false)}>保存配置</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirm Modal */}
+      {deleteTarget && (
+        <div className="fixed inset-0 bg-black/30 z-[100] flex items-center justify-center backdrop-blur-[2px]" onClick={() => setDeleteTarget(null)}>
+          <div className="bg-bg-primary rounded-2xl w-[400px] max-w-[90vw] shadow-2xl animate-in" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-3 px-6 pt-5 pb-3">
+              <div className="w-9 h-9 rounded-full bg-danger/10 flex items-center justify-center shrink-0">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6M14 11v6"></path></svg>
+              </div>
+              <h3 className="text-[16px] font-semibold text-text-primary">删除对话</h3>
+            </div>
+            <div className="px-6 pb-4">
+              <p className="text-[13px] text-text-secondary leading-relaxed">
+                确定要删除对话 “<span className="font-medium text-text-body">{deleteTarget.title}</span>” 吗？删除后将无法恢复。
+              </p>
+            </div>
+            <div className="flex justify-end gap-2 px-6 py-4 border-t border-bg-hover">
+              <button className="px-4.5 py-2 border border-border-hover rounded-lg bg-bg-primary text-text-body text-[13px] cursor-pointer transition-colors hover:bg-bg-sidebar" onClick={() => setDeleteTarget(null)}>取消</button>
+              <button className="px-4.5 py-2 border-none rounded-lg bg-danger text-white text-[13px] font-medium cursor-pointer transition-colors hover:bg-[#dc2626]" onClick={confirmDelete}>确认删除</button>
             </div>
           </div>
         </div>
